@@ -83,8 +83,55 @@ configChanges的选项有很多，这里我们常用的只有locale、orentation
     }
 ```
 
+###Handler消息机制
 
+```
+Message：消息；其中包含了消息ID，消息对象以及处理的数据等，由MessageQueue统一列队，终由Handler处理
 
+Handler：处理者；负责Message发送消息及处理。Handler通过与Looper进行沟通，从而使用Handler时，需要实现handlerMessage(Message msg)方法来对特定的Message进行处理，例如更新UI等（主线程中才行）
+
+MessageQueue：消息队列；用来存放Handler发送过来的消息，并按照FIFO（先入先出队列）规则执行。当然，存放Message并非实际意义的保存，而是将Message以链表的方式串联起来的，等Looper的抽取。
+
+Looper：消息泵，不断从MessageQueue中抽取Message执行。因此，一个线程中的MessageQueue需要一个Looper进行管理。Looper是当前线程创建的时候产生的（UI Thread即主线程是系统帮忙创建的Looper，而如果在子线程中，需要手动在创建线程后立即创建Looper[调用Looper.prepare()方法]）。也就是说，会在当前线程上绑定一个Looper对象。
+
+Thread：线程；负责调度消息循环，即消息循环的执行场所。
+
+ 
+
+具体流程：
+
+0、准备数据和对象：
+
+①、如果在主线程中处理message（即创建handler对象），那么如上所述，系统的Looper已经准备好了（当然，MessageQueue也初始化了），且其轮询方法loop已经开启。【系统的Handler准备好了，是用于处理系统的消息】。【Tips：如果是子线程中创建handler，就需要显式的调用Looper的方法prepare()和loop()，初始化Looper和开启轮询器】
+
+②、通过Message.obtain()准备消息数据（实际是从消息池中取出的消息）
+
+③、创建Handler对象，在其构造函数中，获取到Looper对象、MessageQueue对象（从Looper中获取的），并将handler作为message的标签设置到msg.target上
+
+1、发送消息：sendMessage()：通过Handler将消息发送给消息队列
+
+2、给Message贴上handler的标签：在发送消息的时候，为handler发送的message贴上当前handler的标签
+
+3、开启HandlerThread线程，执行run方法。
+
+4、在HandlerThread类的run方法中开启轮询器进行轮询：调用Looper.loop()方法进行轮询消息队列的消息
+
+【Tips：这两步需要再斟酌，个人认为这个类是自己手动创建的一个线程类，Looper的开启在上面已经详细说明了，这里是说自己手动创建线程（HandlerThread）的时候，才会在这个线程中进行Looper的轮询的】
+
+5、在消息队列MessageQueue中enqueueMessage(Message msg, long when)方法里，对消息进行入列，即依据传入的时间进行消息入列（排队）
+
+6、轮询消息：与此同时，Looper在不断的轮询消息队列
+
+7、在Looper.loop()方法中，获取到MessageQueue对象后，从中取出消息（Message msg = queue.next()）
+
+8、分发消息：从消息队列中取出消息后，调用msg.target.dispatchMessage(msg);进行分发消息
+
+9、将处理好的消息分发给指定的handler处理，即调用了handler的dispatchMessage(msg)方法进行分发消息。
+
+10、在创建handler时，复写的handleMessage方法中进行消息的处理
+
+11、回收消息：在消息使用完毕后，在Looper.loop()方法中调用msg.recycle()，将消息进行回收，即将消息的所有字段恢复为初始状态
+```
 ### Thanks
 
 《Android开发艺术探索》
